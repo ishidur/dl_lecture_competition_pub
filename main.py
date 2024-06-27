@@ -11,6 +11,7 @@ from src.datasets import train_collate
 from tqdm import tqdm
 from pathlib import Path
 from typing import Dict, Any
+from torch.nn.functional import avg_pool2d
 import os
 import time
 import torchvision.transforms.functional as F
@@ -44,10 +45,11 @@ def compute_multiscale_epe_error(pred_flows: torch.Tensor, gt_flow: torch.Tensor
     gt_flow: torch.Tensor, Shape: torch.Size([B, 2, 480, 640]) => 正解のオプティカルフローデータ
     '''
     epe = 0
-    for fl in pred_flows.values():
-        resized_gt = F.resize(gt_flow, size=fl.size()[2:])
-        epe += torch.mean(torch.mean(torch.norm(fl - resized_gt, p=2, dim=1), dim=(1, 2)), dim=0)
-    return epe/len(pred_flows)
+    gt = gt_flow
+    for key in ["flow3","flow2","flow1","flow0"]:
+        epe += torch.mean(torch.mean(torch.norm(pred_flows[key] - gt, p=2, dim=1), dim=(1, 2)), dim=0)
+        gt = avg_pool2d(gt, kernel_size=2, stride=2)
+    return epe
 
 def save_optical_flow_to_npy(flow: torch.Tensor, file_name: str):
     '''
@@ -144,8 +146,8 @@ def main(args: DictConfig):
             event_image = batch["event_volume"].to(device) # [B, 4, 480, 640]
             ground_truth_flow = batch["flow_gt"].to(device) # [B, 2, 480, 640]
             flow, flow_dict = model(event_image) # [B, 2, 480, 640]
-            loss: torch.Tensor = compute_epe_error(flow, ground_truth_flow)
-            # loss: torch.Tensor = compute_multiscale_epe_error(flow_dict, ground_truth_flow)
+            # loss: torch.Tensor = compute_epe_error(flow, ground_truth_flow)
+            loss: torch.Tensor = compute_multiscale_epe_error(flow_dict, ground_truth_flow)
             # print(f"batch {i} loss: {loss.item()}")
             optimizer.zero_grad()
             loss.backward()
@@ -167,7 +169,6 @@ def main(args: DictConfig):
     # ------------------
     #   Start predicting
     # ------------------
-    # model_path = f"checkpoints/model_epoch10.pth"
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     flow: torch.Tensor = torch.tensor([]).to(device)
