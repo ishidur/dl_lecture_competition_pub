@@ -12,7 +12,7 @@ class EVFlowNet(nn.Module):
         self._args = args
 
         self.encoder1 = general_conv2d(
-            in_channels=4,
+            in_channels=self._args.input_channel,
             out_channels=_BASE_CHANNELS,
             do_batch_norm=not self._args.no_batch_norm,
         )

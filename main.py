@@ -3,8 +3,7 @@ import hydra
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 from torch.optim import lr_scheduler
-from src.models.evflownet import EVFlowNet
-from src.models.idedeq import IDEDEQIDO
+from src.models import get_model, get_train_loss_fn, get_eval_loss_fn
 from src.datasets import DatasetProvider
 from src.datasets import train_collate
 from src.loss import get_lossfunc, compute_epe_error
@@ -19,13 +18,13 @@ from typing import Dict, Any
 import os
 import time
 from logging import getLogger
+from torch.nn import functional as F
 
 logger = getLogger(__name__)
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="base")
 def main(args: DictConfig):
-    logger.info(args)
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     """
@@ -97,12 +96,21 @@ def main(args: DictConfig):
         Key: seq_name, Type: list
         Key: event_volume, Type: torch.Tensor, Shape: torch.Size([Batch, 4, 480, 640]) => イベントデータのバッチ
     """
+    # ptrns = [
+    #     {"name": "l2+smooth"},
+    #     {"name": "l2"},
+    #     {"name": "l1"},
+    #     {"name": "l1+smooth"},
+    # ]
+    # for p in ptrns:
+    #     args.loss.name = p["name"]
+    logger.info(args)
     # ------------------
     #       Model
     # ------------------
-    # model = EVFlowNet(args.model).to(device)
-    model = IDEDEQIDO(args.model).to(device)
-    model.load_state_dict(torch.load(args.model.pretrain_ckpt, map_location=device))
+    model = get_model(args.model).to(device)
+    if args.model.get("pretrain_ckpt", None):
+        model.load_state_dict(torch.load(args.model.pretrain_ckpt, map_location=device))
 
     # ------------------
     #   optimizer
@@ -124,6 +132,8 @@ def main(args: DictConfig):
     )
     # scheduler = lr_scheduler.ReduceLROnPlateau(optimizer)
     loss_fn = get_lossfunc(args.loss)
+    train_loss = get_train_loss_fn(model, loss_fn)
+    eval_loss = get_eval_loss_fn(model, compute_epe_error)
     # ------------------
     #   Start training
     # # ------------------
@@ -132,37 +142,31 @@ def main(args: DictConfig):
 
     # Create the directory if it doesn't exist
     if not os.path.exists(f"checkpoints/{current_time}"):
-        os.makedirs(
-            f"checkpoints/{current_time}"
-        )  # 71 EPE+smooth loss, 72 from scratch
+        os.makedirs(f"checkpoints/{current_time}")
     best_loss = None
     for epoch in range(args.train.epochs):
         total_loss = 0
         print("on epoch: {}".format(epoch + 1))
         for i, batch in enumerate(tqdm(train_data)):
             batch: Dict[str, Any]
-
             batch = move_batch_to_cuda(batch, device)
-            out = model(batch)  # [B, 2, 480, 640]
-            loss: torch.Tensor = loss_fn(out["final_prediction"], batch["flow_gt"])
+            loss = train_loss(model, batch)
+            # out = model(batch)  # [B, 2, 480, 640]
+            # loss: torch.Tensor = loss_fn(out["final_prediction"], batch["flow_gt"])
 
             # event_image = batch["event_volume"].to(device)  # [B, 4, 480, 640]
             # ground_truth_flow = batch["flow_gt"].to(device)  # [B, 2, 480, 640]
             # flow = model(event_image)  # [B, 2, 480, 640]
-            # loss: torch.Tensor = compute_epe_error(flow["flow3"], ground_truth_flow)
-            # loss += 0.5*compute_smoothness_loss(flow["flow3"])
+            # loss: torch.Tensor = loss_fn(flow["flow3"], ground_truth_flow)
 
-            # ground_truth_flow=F.avg_pool2d(ground_truth_flow, 2, 2)
-            # loss += compute_epe_error(flow["flow2"], ground_truth_flow)
-            # loss += 0.5*compute_smoothness_loss(flow["flow2"])
+            # ground_truth_flow = F.avg_pool2d(ground_truth_flow, 2, 2)
+            # loss += loss_fn(flow["flow2"], ground_truth_flow)
 
-            # ground_truth_flow=F.avg_pool2d(ground_truth_flow, 2, 2)
-            # loss += compute_epe_error(flow["flow1"], ground_truth_flow)
-            # loss += 0.5*compute_smoothness_loss(flow["flow1"])
+            # ground_truth_flow = F.avg_pool2d(ground_truth_flow, 2, 2)
+            # loss += loss_fn(flow["flow1"], ground_truth_flow)
 
-            # ground_truth_flow=F.avg_pool2d(ground_truth_flow, 2, 2)
-            # loss += compute_epe_error(flow["flow0"], ground_truth_flow)
-            # loss += 0.5*compute_smoothness_loss(flow["flow0"])
+            # ground_truth_flow = F.avg_pool2d(ground_truth_flow, 2, 2)
+            # loss += loss_fn(flow["flow0"], ground_truth_flow)
 
             optimizer.zero_grad()
             loss.backward()
@@ -171,28 +175,27 @@ def main(args: DictConfig):
 
             total_loss += loss.item()
         logger.info(
-            # f"Epoch {epoch+1}, Loss: {total_loss / len(train_data)}"
             f"Epoch {epoch+1}, Loss: {total_loss / len(train_data)}, lr: {scheduler.get_last_lr()}"
         )
         model.eval()
         with torch.no_grad():
             print("start test")
-            testloss = 0  # TODO: remove at final submission
+            testloss = 0
             for batch in tqdm(val_data):
-                batch: Dict[str, Any]
-                batch = move_batch_to_cuda(batch, device)
-                batch_flow = model(batch)  # [1, 2, 480, 640]
-                loss: torch.Tensor = compute_epe_error(
-                    batch_flow["final_prediction"], batch["flow_gt"]
-                )  # TODO: remove at final submission
+                batch: Dict[str, Any] = move_batch_to_cuda(batch, device)
+                loss = eval_loss(model, batch)
+                # batch_flow = model(batch)  # [1, 2, 480, 640]
+                # loss: torch.Tensor = compute_epe_error(
+                #     batch_flow["final_prediction"], batch["flow_gt"]
+                # )
 
                 # event_image = batch["event_volume"].to(device)
                 # ground_truth_flow = batch["flow_gt"].to(device)  # [B, 2, 480, 640]
                 # batch_flow = model(event_image)  # [1, 2, 480, 640]
                 # loss: torch.Tensor = compute_epe_error(
                 #     batch_flow["flow3"], ground_truth_flow
-                # )  # TODO: remove at final submission
-                testloss += loss.item()  # TODO: remove at final submission
+                # )
+                testloss += loss.item()
             print("test done")
             if best_loss is None or best_loss > testloss:
                 best_loss = testloss
@@ -202,9 +205,8 @@ def main(args: DictConfig):
                 )
             logger.info(
                 f"TestLoss: {testloss / len(val_data)}, Best: {best_loss / len(val_data)}"
-            )  # TODO: remove at final submission
+            )
         model.train()
-        # scheduler.step(testloss)
 
 
 if __name__ == "__main__":

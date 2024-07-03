@@ -8,6 +8,7 @@ from .update import LiteUpdateBlock
 from math import sqrt
 
 
+# https://github.com/tudelft/idnet
 class IDEDEQIDO(nn.Module):
     def __init__(self, config):
         super(IDEDEQIDO, self).__init__()
@@ -93,16 +94,12 @@ class IDEDEQIDO(nn.Module):
             deblurred_tensor = deblurred_tensor.squeeze(2)
         return deblurred_tensor  # [B, V(bins), H, W]
 
-    def forward(self, event_bins, flow_init=None, deblur_iters=None, net_co=None):
+    def forward(self, event_bins, deblur_iters=None, net_co=None):
         deblur_iters = self.deblur_iters
         x_raw = event_bins["event_volume"]
 
         B, V, H, W = x_raw.shape
-        flow_total = (
-            torch.zeros(B, 2, H, W).to(x_raw.device)
-            if flow_init is None
-            else flow_init.clone()
-        )
+        flow_total = torch.zeros(B, 2, H, W).to(x_raw.device)
 
         delta_flow = flow_total
 
