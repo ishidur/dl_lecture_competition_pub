@@ -1,24 +1,24 @@
-import torch
-import hydra
-from omegaconf import DictConfig
-from torch.utils.data import DataLoader
-from torch.optim import lr_scheduler
-from src.models import get_model, get_train_loss_fn, get_eval_loss_fn
-from src.datasets import DatasetProvider
-from src.datasets import train_collate
-from src.loss import get_lossfunc, compute_epe_error
-from src.utils import (
-    RepresentationType,
-    set_seed,
-    move_batch_to_cuda,
-)
-from tqdm import tqdm
-from pathlib import Path
-from typing import Dict, Any
 import os
 import time
 from logging import getLogger
-from torch.nn import functional as F
+from pathlib import Path
+from typing import Any, Dict
+
+import hydra
+import torch
+from omegaconf import DictConfig
+from torch.optim import lr_scheduler
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+from src.datasets import DatasetProvider, train_collate
+from src.loss import compute_epe_error, get_lossfunc
+from src.models import get_eval_loss_fn, get_model, get_train_loss_fn
+from src.utils import (
+    RepresentationType,
+    move_batch_to_cuda,
+    set_seed,
+)
 
 logger = getLogger(__name__)
 
@@ -61,7 +61,6 @@ def main(args: DictConfig):
         config=args.dataset.train,
     )
     train_set = loader.get_train_dataset()
-    # test_set = loader.get_test_dataset()
     val_set = loader.get_validation_dataset()
     collate_fn = train_collate
     train_data = DataLoader(
@@ -90,20 +89,21 @@ def main(args: DictConfig):
         Key: event_volume, Type: torch.Tensor, Shape: torch.Size([Batch, 4, 480, 640]) => イベントデータのバッチ
         Key: flow_gt, Type: torch.Tensor, Shape: torch.Size([Batch, 2, 480, 640]) => オプティカルフローデータのバッチ
         Key: flow_gt_valid_mask, Type: torch.Tensor, Shape: torch.Size([Batch, 1, 480, 640]) => オプティカルフローデータのvalid. ベースラインでは使わない
-    
+
     test data:
         Type of batch: Dict
         Key: seq_name, Type: list
         Key: event_volume, Type: torch.Tensor, Shape: torch.Size([Batch, 4, 480, 640]) => イベントデータのバッチ
     """
     # ptrns = [
-    #     {"name": "l2+smooth"},
-    #     {"name": "l2"},
-    #     {"name": "l1"},
-    #     {"name": "l1+smooth"},
+    #     {"lambda": 1.0, "initial_learning_rate": 5e-4, "epochs": 10},
+    #     {"lambda": 1.0, "initial_learning_rate": 1e-4, "epochs": 30},
     # ]
     # for p in ptrns:
-    #     args.loss.name = p["name"]
+    #     args.loss["lambda"] = p["lambda"]
+    #     args.train.initial_learning_rate = p["initial_learning_rate"]
+    #     args.train.epochs = p["epochs"]
+
     logger.info(args)
     # ------------------
     #       Model
@@ -129,6 +129,7 @@ def main(args: DictConfig):
         args.train.initial_learning_rate,
         epochs=args.train.epochs,
         steps_per_epoch=len(train_data),
+        anneal_strategy="linear",
     )
     # scheduler = lr_scheduler.ReduceLROnPlateau(optimizer)
     loss_fn = get_lossfunc(args.loss)
@@ -151,22 +152,6 @@ def main(args: DictConfig):
             batch: Dict[str, Any]
             batch = move_batch_to_cuda(batch, device)
             loss = train_loss(model, batch)
-            # out = model(batch)  # [B, 2, 480, 640]
-            # loss: torch.Tensor = loss_fn(out["final_prediction"], batch["flow_gt"])
-
-            # event_image = batch["event_volume"].to(device)  # [B, 4, 480, 640]
-            # ground_truth_flow = batch["flow_gt"].to(device)  # [B, 2, 480, 640]
-            # flow = model(event_image)  # [B, 2, 480, 640]
-            # loss: torch.Tensor = loss_fn(flow["flow3"], ground_truth_flow)
-
-            # ground_truth_flow = F.avg_pool2d(ground_truth_flow, 2, 2)
-            # loss += loss_fn(flow["flow2"], ground_truth_flow)
-
-            # ground_truth_flow = F.avg_pool2d(ground_truth_flow, 2, 2)
-            # loss += loss_fn(flow["flow1"], ground_truth_flow)
-
-            # ground_truth_flow = F.avg_pool2d(ground_truth_flow, 2, 2)
-            # loss += loss_fn(flow["flow0"], ground_truth_flow)
 
             optimizer.zero_grad()
             loss.backward()
@@ -174,9 +159,7 @@ def main(args: DictConfig):
             scheduler.step()
 
             total_loss += loss.item()
-        logger.info(
-            f"Epoch {epoch+1}, Loss: {total_loss / len(train_data)}, lr: {scheduler.get_last_lr()}"
-        )
+        logger.info(f"Epoch {epoch+1}, Loss: {total_loss / len(train_data)}, lr: {scheduler.get_last_lr()}")
         model.eval()
         with torch.no_grad():
             print("start test")
@@ -184,28 +167,14 @@ def main(args: DictConfig):
             for batch in tqdm(val_data):
                 batch: Dict[str, Any] = move_batch_to_cuda(batch, device)
                 loss = eval_loss(model, batch)
-                # batch_flow = model(batch)  # [1, 2, 480, 640]
-                # loss: torch.Tensor = compute_epe_error(
-                #     batch_flow["final_prediction"], batch["flow_gt"]
-                # )
 
-                # event_image = batch["event_volume"].to(device)
-                # ground_truth_flow = batch["flow_gt"].to(device)  # [B, 2, 480, 640]
-                # batch_flow = model(event_image)  # [1, 2, 480, 640]
-                # loss: torch.Tensor = compute_epe_error(
-                #     batch_flow["flow3"], ground_truth_flow
-                # )
                 testloss += loss.item()
             print("test done")
             if best_loss is None or best_loss > testloss:
                 best_loss = testloss
                 logger.info("Best score updated, save model")
-                torch.save(
-                    model.state_dict(), f"checkpoints/{current_time}/best_model.pth"
-                )
-            logger.info(
-                f"TestLoss: {testloss / len(val_data)}, Best: {best_loss / len(val_data)}"
-            )
+                torch.save(model.state_dict(), f"checkpoints/{current_time}/best_model.pth")
+            logger.info(f"TestLoss: {testloss / len(val_data)}, Best: {best_loss / len(val_data)}")
         model.train()
 
 

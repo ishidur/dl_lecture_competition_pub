@@ -1,11 +1,11 @@
+from math import sqrt
+
 import torch
 import torch.nn as nn
-from torch.nn.functional import unfold, grid_sample, interpolate
+from torch.nn.functional import grid_sample, interpolate, unfold
 
 from .extractor import LiteEncoder
 from .update import LiteUpdateBlock
-
-from math import sqrt
 
 
 # https://github.com/tudelft/idnet
@@ -74,9 +74,7 @@ class IDEDEQIDO(nn.Module):
         for t in range(T):
             delta_p = flow * t / (T - 1)  # reference coordinates prev frame
             # delta_p = flow * (T - 1 - t) / (T - 1)  # reference coordinates next frame
-            sampling_grid = identity_grid + torch.movedim(
-                delta_p, 1, -1
-            )  # [B, H, W, 2]
+            sampling_grid = identity_grid + torch.movedim(delta_p, 1, -1)  # [B, H, W, 2]
             sampling_grid[..., 0] = sampling_grid[..., 0] / (W - 1) * 2 - 1
             sampling_grid[..., 1] = sampling_grid[..., 1] / (H - 1) * 2 - 1
             deblurred_tensor[
@@ -118,9 +116,7 @@ class IDEDEQIDO(nn.Module):
                         W // self.downsample,
                     )
                 ).to(x.device)
-            for i, slice in enumerate(
-                x.permute(2, 0, 1, 3, 4)
-            ):  # [V(bins), B, 2, H, W]
+            for i, slice in enumerate(x.permute(2, 0, 1, 3, 4)):  # [V(bins), B, 2, H, W]
                 f = self.fnet(slice)  # slice: [B, 2, H, W]
                 net = self.update_net(net, f)
 
@@ -141,11 +137,7 @@ class IDEDEQIDO(nn.Module):
         x = event_bins["event_volume"]
 
         B, V, H, W = x.shape
-        flow_total = (
-            torch.zeros(B, 2, H, W).to(x.device)
-            if flow_init is None
-            else flow_init.clone()
-        )
+        flow_total = torch.zeros(B, 2, H, W).to(x.device) if flow_init is None else flow_init.clone()
 
         delta_flow = flow_total
 

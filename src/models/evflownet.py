@@ -1,7 +1,9 @@
+from typing import Any, Dict
+
 import torch
 from torch import nn
-from src.models.base import *
-from typing import Dict, Any
+
+from src.models.base import build_resnet_block, general_conv2d, upsample_conv2d_and_predict_flow
 
 _BASE_CHANNELS = 64
 
@@ -33,12 +35,7 @@ class EVFlowNet(nn.Module):
         )
 
         self.resnet_block = nn.Sequential(
-            *[
-                build_resnet_block(
-                    8 * _BASE_CHANNELS, do_batch_norm=not self._args.no_batch_norm
-                )
-                for i in range(2)
-            ]
+            *[build_resnet_block(8 * _BASE_CHANNELS, do_batch_norm=not self._args.no_batch_norm) for i in range(2)]
         )
 
         self.decoder1 = upsample_conv2d_and_predict_flow(

@@ -1,20 +1,21 @@
-import torch
+from pathlib import Path
+from typing import Any, Dict
+
 import hydra
+import torch
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
-from src.models import get_model
-from src.datasets import DatasetProvider
-from src.datasets import train_collate
+from tqdm import tqdm
+
+from src.datasets import DatasetProvider, train_collate
 from src.loss import compute_epe_error
+from src.models import get_model
 from src.utils import (
     RepresentationType,
-    set_seed,
     move_batch_to_cuda,
     save_optical_flow_to_npy,
+    set_seed,
 )
-from tqdm import tqdm
-from pathlib import Path
-from typing import Dict, Any
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="base")
@@ -71,7 +72,7 @@ def main(args: DictConfig):
         Key: event_volume, Type: torch.Tensor, Shape: torch.Size([Batch, 4, 480, 640]) => イベントデータのバッチ
         Key: flow_gt, Type: torch.Tensor, Shape: torch.Size([Batch, 2, 480, 640]) => オプティカルフローデータのバッチ
         Key: flow_gt_valid_mask, Type: torch.Tensor, Shape: torch.Size([Batch, 1, 480, 640]) => オプティカルフローデータのvalid. ベースラインでは使わない
-    
+
     test data:
         Type of batch: Dict
         Key: seq_name, Type: list
@@ -85,7 +86,7 @@ def main(args: DictConfig):
     #   Start predicting
     # ------------------
     # model_path = f"idn/id-8x.pt"
-    model_path = f"checkpoints/20240703133232/best_model.pth"
+    model_path = "checkpoints/20240703165626/best_model.pth"
 
     model.load_state_dict(torch.load(model_path, map_location=device))
 
@@ -99,31 +100,25 @@ def main(args: DictConfig):
             ground_truth_flow = batch["flow_gt"].to(device)  # [B, 2, 480, 640]
             batch = move_batch_to_cuda(batch, device)
 
-            batch_flow = model(batch["event_volume"])  # [1, 2, 480, 640]
-            loss: torch.Tensor = compute_epe_error(
-                batch_flow["flow3"], ground_truth_flow
-            )  # TODO: remove at final submission
-            flow = torch.cat(
-                (flow, batch_flow["flow3"]), dim=0
-            )  # [N, 2, 480, 640]
-
-            # batch_flow = model(batch)  # [1, 2, 480, 640]
+            # batch_flow = model(batch["event_volume"])  # [1, 2, 480, 640]
             # loss: torch.Tensor = compute_epe_error(
-            #     batch_flow["final_prediction"], ground_truth_flow
+            #     batch_flow["flow3"], ground_truth_flow
             # )  # TODO: remove at final submission
-            # flow = torch.cat(
-            #     (flow, batch_flow["final_prediction"]), dim=0
-            # )  # [N, 2, 480, 640]
+            # flow = torch.cat((flow, batch_flow["flow3"]), dim=0)  # [N, 2, 480, 640]
+
+            batch_flow = model(batch)  # [1, 2, 480, 640]
+            loss: torch.Tensor = compute_epe_error(
+                batch_flow["final_prediction"], ground_truth_flow
+            )  # TODO: remove at final submission
+            flow = torch.cat((flow, batch_flow["final_prediction"]), dim=0)  # [N, 2, 480, 640]
             total_loss += loss.item()  # TODO: remove at final submission
         print("test done")
-        print(
-            f"Loss: {total_loss / len(test_data)}"
-        )  # TODO: remove at final submission
+        print(f"Loss: {total_loss / len(test_data)}")  # TODO: remove at final submission
 
     # ------------------
     #  save submission
     # ------------------
-    file_name = "submission20240703133232"
+    file_name = "submission20240703165626"
     save_optical_flow_to_npy(flow, file_name)
 
 

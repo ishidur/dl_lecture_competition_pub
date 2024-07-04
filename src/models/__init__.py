@@ -1,7 +1,8 @@
+import torch
+from torch.nn import functional as F
+
 from .evflownet import EVFlowNet
 from .idedeq import IDEDEQIDO
-from torch.nn import functional as F
-import torch
 
 
 def get_model(config):

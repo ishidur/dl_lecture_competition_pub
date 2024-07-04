@@ -1,14 +1,11 @@
 import torch
 import torch.nn as nn
 
-
 class ResidualBlock(nn.Module):
     def __init__(self, in_planes, planes, norm_fn="group", stride=1):
         super(ResidualBlock, self).__init__()
 
-        self.conv1 = nn.Conv2d(
-            in_planes, planes, kernel_size=3, padding=1, stride=stride
-        )
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, stride=stride)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
 
@@ -42,9 +39,7 @@ class ResidualBlock(nn.Module):
             self.downsample = None
 
         else:
-            self.downsample = nn.Sequential(
-                nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride), self.norm3
-            )
+            self.downsample = nn.Sequential(nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride), self.norm3)
 
     def forward(self, x):
         y = x
@@ -61,9 +56,7 @@ class LiteEncoder(nn.Module):
     def __init__(self, output_dim=32, stride=2, dropout=0.0, n_first_channels=1):
         super(LiteEncoder, self).__init__()
 
-        self.conv1 = nn.Conv2d(
-            n_first_channels, output_dim, kernel_size=7, stride=2, padding=3
-        )
+        self.conv1 = nn.Conv2d(n_first_channels, output_dim, kernel_size=7, stride=2, padding=3)
         self.relu1 = nn.ReLU(inplace=True)
 
         self.in_planes = output_dim

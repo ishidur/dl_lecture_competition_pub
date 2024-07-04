@@ -71,9 +71,7 @@ class upsample_conv2d_and_predict_flow(nn.Module):
 
     def forward(self, conv):
         shape = conv.shape
-        conv = nn.functional.interpolate(
-            conv, size=[shape[2] * 2, shape[3] * 2], mode="nearest"
-        )
+        conv = nn.functional.interpolate(conv, size=[shape[2] * 2, shape[3] * 2], mode="nearest")
         conv = self.pad(conv)
         conv = self.general_conv2d(conv)
 
