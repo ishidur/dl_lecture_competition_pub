@@ -86,7 +86,7 @@ def main(args: DictConfig):
     #   Start predicting
     # ------------------
     # model_path = f"idn/id-8x.pt"
-    model_path = "checkpoints/20240703165626/best_model.pth"
+    model_path = "checkpoints/20240705082336/best_model.pth"
 
     model.load_state_dict(torch.load(model_path, map_location=device))
 
@@ -118,7 +118,7 @@ def main(args: DictConfig):
     # ------------------
     #  save submission
     # ------------------
-    file_name = "submission20240703165626"
+    file_name = "submission20240705082336"
     save_optical_flow_to_npy(flow, file_name)
 
 

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class FlowHead2(nn.Module):
     def __init__(self, input_dim=128, hidden_dim=256):
         super(FlowHead2, self).__init__()

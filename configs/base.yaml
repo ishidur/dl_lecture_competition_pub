@@ -13,7 +13,9 @@ train:
   initial_learning_rate: 5e-4
   # initial_learning_rate: 1e-3
   weight_decay: 0.0001
+  pct_start: 0.3
   epochs: 10
+
 
 model:
   name: idnet
@@ -21,6 +23,10 @@ model:
   hidden_dim: 96 # idnet
   downsample: 8 # idnet
   pretrain_ckpt: idn/id-8x.pt
+  # update_iters: 4 # idnet
+  # hidden_dim: 128 # idnet
+  # downsample: 4 # idnet
+  # pretrain_ckpt: idn/id-4x.pt
   # name: evflownet
   # no_batch_norm: false # EVFlowNet
   # input_channel: ${dataset.num_voxel_bins} # EVFlowNet

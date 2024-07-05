@@ -95,15 +95,18 @@ def main(args: DictConfig):
         Key: seq_name, Type: list
         Key: event_volume, Type: torch.Tensor, Shape: torch.Size([Batch, 4, 480, 640]) => イベントデータのバッチ
     """
-    # ptrns = [
-    #     {"lambda": 1.0, "initial_learning_rate": 5e-4, "epochs": 10},
-    #     {"lambda": 1.0, "initial_learning_rate": 1e-4, "epochs": 30},
-    # ]
-    # for p in ptrns:
-    #     args.loss["lambda"] = p["lambda"]
-    #     args.train.initial_learning_rate = p["initial_learning_rate"]
+    # patterns = (
+    #     [
+    #         {"epochs": 100, "initial_learning_rate": 5e-4, "pct_start": 0.03, "weight_decay": None},
+    #         {"epochs": 100, "initial_learning_rate": 1e-4, "pct_start": 0.05, "weight_decay": None},
+    #         {"epochs": 100, "initial_learning_rate": 5e-4, "pct_start": 0.03, "weight_decay": 1e-4},
+    #     ],
+    # )
+    # for p in patterns:
     #     args.train.epochs = p["epochs"]
-
+    #     args.train.initial_learning_rate = p["initial_learning_rate"]
+    #     args.train.pct_start = p["pct_start"]
+    #     args.train.weight_decay = p["weight_decay"]
     logger.info(args)
     # ------------------
     #       Model
@@ -115,11 +118,17 @@ def main(args: DictConfig):
     # ------------------
     #   optimizer
     # ------------------
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=args.train.initial_learning_rate,
-        weight_decay=args.train.weight_decay,
-    )
+    if args.train.get("weight_decay", None):
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=args.train.initial_learning_rate,
+            weight_decay=args.train.weight_decay,
+        )
+    else:
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=args.train.initial_learning_rate,
+        )
     # optimizer = torch.optim.SGD(
     #     model.parameters(),
     #     lr=args.train.initial_learning_rate,
@@ -129,7 +138,8 @@ def main(args: DictConfig):
         args.train.initial_learning_rate,
         epochs=args.train.epochs,
         steps_per_epoch=len(train_data),
-        anneal_strategy="linear",
+        pct_start=args.train.pct_start,
+        anneal_strategy="cos",
     )
     # scheduler = lr_scheduler.ReduceLROnPlateau(optimizer)
     loss_fn = get_lossfunc(args.loss)
