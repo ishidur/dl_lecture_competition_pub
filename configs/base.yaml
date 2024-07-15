@@ -10,10 +10,10 @@ data_loader:
     batch_size: 1
     shuffle: false
 train:
-  initial_learning_rate: 5e-4
+  initial_learning_rate: 1e-4
   # initial_learning_rate: 1e-3
-  weight_decay: 0.0001
-  pct_start: 0.03
+  # weight_decay: 0.0001
+  pct_start: 0.05
   epochs: 100
 
 
